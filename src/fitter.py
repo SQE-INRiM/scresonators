@@ -21,8 +21,10 @@ class Fitter:
         
         self.fit_method = fit_method
         self.remove_elec_delay = kwargs.get('remove_delay', True)
-        self.circle_preprocessing = kwargs.get('circle_preprocessing', True)
-        self.linear_preprocessing = kwargs.get('linear_preprocessing', False)
+        # Backward compatibility: accept old kwarg names but use safe attribute names 
+        # to avoid shadowing the methods self.preprocess_circle() and self.preprocess_linear()
+        self.circle_preprocessing = kwargs.get('circle_preprocessing', kwargs.get('preprocess_circle', True))
+        self.linear_preprocessing = kwargs.get('linear_preprocessing', kwargs.get('preprocess_linear', False))
         self.normalize = kwargs.get('normalize', 4)
         self.MC_rounds = kwargs.get('MC_rounds', 1000)
         self.MC_step_const = kwargs.get('MC_step_const', 0.05)
@@ -38,7 +40,7 @@ class Fitter:
         self.off_res_point = kwargs.get('off_res_point', 1+0*1j)
 
 
-    def fit(self, fdata, sdata, manual_init=None):
+    def fit(self, fdata, sdata, manual_init=None, verbose=False, full_output=False):
         """Fit resonator data using the provided method and lmfit's Model fit"""
         #fdata: numpy array of the frequency data
         #sdata: complex valued numpy array of the scattering parameter data
@@ -77,9 +79,9 @@ class Fitter:
         #this creates an lmfit.Model() object defined by the FitMethod
         if self.fit_method.__name__.lower() == 'lambda2':
             print(params)
-        result = model.fit(sdata, params, f=fdata, method='leastsq') #lmfit.Model.fit(), not Fitter.fit()
-        
-
+        result = model.fit(sdata, params, f=fdata, method='leastsq')
+        if verbose:
+            print(result.fit_report())
         
         # Using Monte Carlo to explore parameter space if enabled
         #may want to delete this
@@ -92,12 +94,16 @@ class Fitter:
                 'workers': 1
             }
             emcee_result = model.fit(data=sdata, params=result.params, x=fdata, method='emcee', fit_kws=emcee_kwargs)
-            return emcee_result.params, emcee_result
+            if verbose:
+                print(emcee_result.fit_report())
         try:
             params = self.fit_method.extractQi(self = self.fit_method, params = result.params)
         except:
             pass
-        return params, result
+
+        if full_output:
+            return params, result
+        return params
     
     
     def preprocess_circle(self, fdata: np.ndarray, sdata: np.ndarray):

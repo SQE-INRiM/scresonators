@@ -11,7 +11,7 @@ def makeSummaryFigure(**kwargs):
     fig.parameterAnnotation = None
 
     ax['mag'].sharex(ax['phase'])
-    ax['phase'].set_xlabel('Frequency / Hz')
+    ax['phase'].set_xlabel('Frequency (GHz)')
     ax['mag'].tick_params(labelbottom = False)
     ax['mag'].set_aspect('auto')
     ax['phase'].set_aspect('auto')
@@ -32,8 +32,8 @@ def magnitude(fdata, sdata, **kwargs):
     ax_list = fig.get_axes()
     ax = AxesListToDict(ax_list)
 
-    ax['mag'].plot(fdata, np.abs(sdata), **kwargs)
-    ax['mag'].set_ylabel('Magnitude')
+    ax['mag'].plot(fdata, 20 * np.log10(np.abs(sdata)), **kwargs)
+    ax['mag'].set_ylabel('Magnitude (dB)')
     return fig, ax
 
 #TODO: add support for degrees
@@ -43,7 +43,7 @@ def phase(fdata, sdata, **kwargs):
     ax = AxesListToDict(ax_list)
 
     ax['phase'].plot(fdata, np.unwrap(np.angle(sdata)), **kwargs)
-    ax['phase'].set_ylabel('Phase / rad')
+    ax['phase'].set_ylabel('Phase (rad)')
     return fig, ax
 
 def summaryPlot(fdata, sdata, **kwargs):
@@ -56,10 +56,10 @@ def summaryPlot(fdata, sdata, **kwargs):
     ax = AxesListToDict(ax_list)
 
     rf.plotting.plot_smith(sdata, ax=ax['smith'], x_label=None, y_label=None, title='Smith Chart', **kwargs)
-    ax['mag'].plot(fdata, np.abs(sdata), **kwargs)
-    ax['mag'].set_ylabel('Magnitude')
+    ax['mag'].plot(fdata, 20 * np.log10(np.abs(sdata)), **kwargs)
+    ax['mag'].set_ylabel('Magnitude (dB)')
     ax['phase'].plot(fdata, np.unwrap(np.angle(sdata)), **kwargs)
-    ax['phase'].set_ylabel('Phase / rad')
+    ax['phase'].set_ylabel('Phase (rad)')
     return fig, ax
 
 def annotate(annotation_text: str):
