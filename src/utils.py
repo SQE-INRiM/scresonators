@@ -64,6 +64,23 @@ def find_circle(x: np.ndarray, y: np.ndarray) -> tuple:
 
     return center_x, center_y, radius
 
+def linregress_nd(x, y, axis=0):
+    x = np.asarray(x)
+    y = np.asarray(y)
+    
+    xmean = np.mean(x, axis=axis, keepdims=True)
+    ymean = np.mean(y, axis=axis, keepdims=True)
+    # print(x.shape, y.shape, xmean.shape, ymean.shape)
+    # print(x.shape, xmean.shape)
+    cov = np.mean(np.broadcast_to(x - xmean, y.shape) * (y - ymean), axis=axis)
+    var = np.mean(np.broadcast_to(x - xmean, y.shape)**2, axis=axis)
+    
+    slope = cov / var
+    intercept = (ymean - slope * xmean)
+    # print(slope.shape, intercept.shape)
+    
+    return slope.squeeze(), intercept.squeeze()
+
 def find_circle2(x: np.array, y: np.array):
     '''
     implements the algebraic circle fitting technique detailed in Chernov & Lesort, and Probst, originally developed by Pratt
@@ -207,17 +224,19 @@ def partitionFrequencyBand(fdata: np.ndarray, GradS: np.ndarray, keep = 'above',
 
     #TODO: check if fdata and GradS have the same length
     GradSMagnitude = np.abs(GradS)
-    chiFunction = np.zeros(len(fdata))
+    chiFunction = np.zeros(GradS.shape)
 
-    cutoff_value = (1-cutoff)*np.min(GradSMagnitude) + cutoff*np.max(GradSMagnitude)
+    cutoff_value = (1-cutoff)*np.min(GradSMagnitude, axis=0) + cutoff*np.max(GradSMagnitude, axis=0)
     if keep == 'above':
-        for n in range(len(GradSMagnitude)):
-            if GradSMagnitude[n] > cutoff_value:
-                chiFunction[n] = 1  # set to one if |dS/df| is above the cutoff at this point
+        chiFunction = np.heaviside(GradSMagnitude-cutoff_value, 0)
+        # for n in range(len(GradSMagnitude)):
+        #     if GradSMagnitude[n] > cutoff_value:
+        #         chiFunction[n] = 1  # set to one if |dS/df| is above the cutoff at this point
     elif keep == 'below':
-        for n in range(len(GradSMagnitude)):
-            if GradSMagnitude[n] < cutoff_value:
-                chiFunction[n] = 1  # set to one if |dS/df| is below the cutoff at this point
+        chiFunction = np.heaviside(-GradSMagnitude+cutoff_value, 0)
+        # for n in range(len(GradSMagnitude)):
+        #     if GradSMagnitude[n] < cutoff_value:
+        #         chiFunction[n] = 1  # set to one if |dS/df| is below the cutoff at this point
 
     return chiFunction
 

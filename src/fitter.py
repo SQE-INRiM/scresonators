@@ -21,15 +21,15 @@ class Fitter:
         
         self.fit_method = fit_method
         self.remove_elec_delay = kwargs.get('remove_delay', True)
-        self.preprocess_circle = kwargs.get('preprocess_circle', True)
-        self.preprocess_linear = kwargs.get('preprocess_linear', False)
+        self.circle_preprocessing = kwargs.get('circle_preprocessing', True)
+        self.linear_preprocessing = kwargs.get('linear_preprocessing', False)
         self.normalize = kwargs.get('normalize', 4)
         self.MC_rounds = kwargs.get('MC_rounds', 1000)
         self.MC_step_const = kwargs.get('MC_step_const', 0.05)
         self.MC_weight = kwargs.get('MC_weight', False)
         self.MC_fix = kwargs.get('MC_fix', [])
         self.databg = kwargs.get('databg', None)
-        self.plot_results = kwargs.get('plotstyle', None)#for later implementation of optional plotting post fitting
+        self.plot_results = kwargs.get('plotstyle', None) #for later implementation of optional plotting post fitting
         self.delay_guess = kwargs.get('delay_guess', None)
         self.Ql_guess = None
         self.fr_guess = None
@@ -38,7 +38,7 @@ class Fitter:
         self.off_res_point = kwargs.get('off_res_point', 1+0*1j)
 
 
-    def fit(self, fdata, sdata, manual_init=None, verbose=False):
+    def fit(self, fdata, sdata, manual_init=None):
         """Fit resonator data using the provided method and lmfit's Model fit"""
         #fdata: numpy array of the frequency data
         #sdata: complex valued numpy array of the scattering parameter data
@@ -47,30 +47,24 @@ class Fitter:
         ##########################################
         #PREPROCESSING
         ##########################################
+        
+        
         if self.databg:
-            #this feature is untested
             sdata = self.background_removal(sdata)
-        if self.preprocess_linear == True:
-            #TODO: this step needs fixing
+        if self.linear_preprocessing:
             sdata, _, _, _, _ = self.preprocess_linear(fdata, sdata, self.normalize)
-        if self.remove_elec_delay == True:
+        if self.remove_elec_delay:
             delay = self.find_delay(fdata, sdata)
             sdata = remove_delay(fdata, sdata, delay)
-        if self.preprocess_circle == True:
-            #rotate and scale the off-resonant point to a prescribed anchor point
+        if self.circle_preprocessing:
             sdata = self.anchor_to_point(fdata, sdata)
-
-
-
-
-
 
         ##############################################################################
         #Initial guess for fitting parameters
         ##############################################################################
         # Setup the initial parameters or use provided manual_init
         if manual_init:
-            params = self.manual_init
+            params = manual_init
         else:
             params = self.fit_method.find_initial_guess(self = self.fit_method ,fdata = fdata,sdata = sdata)
             #very weird that self = self.fit_method needs to be passed
@@ -81,8 +75,10 @@ class Fitter:
         #####################################################
         model = self.fit_method.create_model(self = self.fit_method)
         #this creates an lmfit.Model() object defined by the FitMethod
+        if self.fit_method.__name__.lower() == 'lambda2':
+            print(params)
         result = model.fit(sdata, params, f=fdata, method='leastsq') #lmfit.Model.fit(), not Fitter.fit()
-        if verbose: print(result.fit_report())
+        
 
         
         # Using Monte Carlo to explore parameter space if enabled
@@ -96,12 +92,12 @@ class Fitter:
                 'workers': 1
             }
             emcee_result = model.fit(data=sdata, params=result.params, x=fdata, method='emcee', fit_kws=emcee_kwargs)
-            if verbose:
-                print(emcee_result.fit_report())
-            return emcee_result.params
-
-        params = self.fit_method.extractQi(self = self.fit_method, params = result.params)
-        return params
+            return emcee_result.params, emcee_result
+        try:
+            params = self.fit_method.extractQi(self = self.fit_method, params = result.params)
+        except:
+            pass
+        return params, result
     
     
     def preprocess_circle(self, fdata: np.ndarray, sdata: np.ndarray):
@@ -136,35 +132,62 @@ class Fitter:
 
         Args:
             xdata (np.ndarray): The frequency data.
-            ydata (np.ndarray): The complex S21 data to preprocess.
+            ydata (np.ndarray): The complex S-parameter data to preprocess.
             normalize (int): Number of endpoints to use for normalization.
 
         Returns:
-            tuple: Preprocessed S21 data, phase slope, phase intercept,
-                   magnitude slope, and magnitude intercept.
+            tuple: Preprocessed S-parameter data, phase slopes, phase intercepts,
+                   magnitude slopes, and magnitude intercepts.
         """
         if normalize * 2 > len(ydata):
             raise ValueError(
                 "Not enough points to normalize. Please decrease the 'normalize' value or include more data points near resonance.")
 
         # Unwrap phase for linear preprocessing
-        phase = np.unwrap(np.angle(ydata))
+        phase = np.unwrap(np.angle(ydata), axis=0)
 
-        # Normalize phase using linear fit
-        slope, intercept, _, _, _ = linregress(
-            np.append(xdata[:normalize], xdata[-normalize:]),
-            np.append(phase[:normalize], phase[-normalize:])
-        )
+        # Custom fit method
+
+        # Select left and right segments for linear fit
+        x_left, y_left = xdata[:normalize], phase[:normalize]
+        x_right, y_right = xdata[-normalize:], phase[-normalize:]
+
+        # Fit left and right segments independently
+        # print(x_left.shape, y_left.shape)
+        slope_l, intercept_l, _, _, _ = linregress(x_left, y_left)
+        slope_r, intercept_r, _, _, _ = linregress(x_right, y_right)
+        # print(slope_l.shape)
+
+        # Evaluate both lines at a common reference point (e.g., the median of xdata)
+        x0 = np.median(xdata)
+        y_left_eval = slope_l * x0 + intercept_l
+        y_right_eval = slope_r * x0 + intercept_r
+
+        # Compute phase jump and apply 2π correction
+        correction = np.round((y_left_eval - y_right_eval) / (2 * np.pi)) * 2 * np.pi # if y_left_eval and y_right_eval are close, correction is set to 0. Otherwise, to a multiple of 2π
+        y_right_corrected = y_right + correction
+
+        # Fit corrected data from both segments
+        x_fit = np.concatenate((x_left, x_right),axis=0)
+        y_fit = np.concatenate((y_left, y_right_corrected),axis=0)
+        slope, intercept, _, _, _ = linregress(x_fit, y_fit)
+
+        # # Normalize phase using linear fit
+        # slope, intercept, _, _, _ = linregress(
+        #     np.append(xdata[:normalize], xdata[-normalize:]),
+        #     np.append(phase[:normalize], phase[-normalize:])
+        # )
+
 
         # Adjust phase to remove cable delay and rotate off-resonant point to (1, 0i)
         adjusted_phase = phase - (slope * xdata + intercept)
-        y_adjusted = np.abs(ydata) * np.exp(1j * adjusted_phase)
+        
 
         # Normalize magnitude using linear fit
         y_db = 20 * np.log10(np.abs(ydata))
-        mag_slope, mag_intercept, _, _, _ = linregress(
-            np.append(xdata[:normalize], xdata[-normalize:]),
-            np.append(y_db[:normalize], y_db[-normalize:])
+        mag_slope, mag_intercept, _, _, _  = linregress(
+            np.concatenate((xdata[:normalize], xdata[-normalize:]),axis=0),
+            np.concatenate((y_db[:normalize], y_db[-normalize:]), axis=0)
         )
         adjusted_magnitude = 10 ** ((y_db - (mag_slope * xdata + mag_intercept)) / 20)
 

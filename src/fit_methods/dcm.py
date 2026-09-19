@@ -1,7 +1,7 @@
 import numpy as np
 import lmfit
 
-from utils import *
+from ..utils import *
 from .fit_method import FitMethod
 from ..utils import find_circle
 from scipy.ndimage import gaussian_filter
@@ -46,7 +46,8 @@ class DCM(FitMethod):
 
 
     def find_initial_guess(self, fdata: np.ndarray, sdata: np.ndarray) -> lmfit.Parameters:
-        x_c, y_c, r = find_circle(np.real(sdata), np.imag(sdata))#the circle diameter is 2*r = Q/Qc
+        _, _, r = find_circle(np.real(sdata), np.imag(sdata))#the circle diameter is 2*r = Q/Qc
+        # print(r)
         """
         Finds the initial guess of the fitting parameters.
         
@@ -80,15 +81,17 @@ class DCM(FitMethod):
         gradSmagnitude = np.abs(gradS)
         f_c = fdata[np.argmax(gradSmagnitude)+3]#uncertainties can't be calculated when this guess is too good!!!
         Q_guess = 2*f_c/(linewidth)
-        print(f'Q_guess: {Q_guess}')
         Qc_guess = Q_guess/(2*r)
 
         # Create an lmfit.Parameters object to store initial guesses
         params = lmfit.Parameters()
+        
         params.add('Q', value=Q_guess)
         params.add('Qc', value=Qc_guess)
         params.add('f0', value=f_c, min=f_c*0.9, max=f_c*1.1)
         params.add('phi', value=0, min=-np.pi, max=np.pi)
+
+        
 
         return params
 

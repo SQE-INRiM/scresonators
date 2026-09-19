@@ -28,14 +28,14 @@ class Resonator:
 
     def Load_data_from_Network(self, network: Network):
         self.sdata = network.s
-        network.frequency.units = 'GHz'
+        network.frequency.units = 'Hz'
         self.fdata = network.f
 
 
     def load_data_from_touchstone(self, touchstone_file: str):
         network = Network(touchstone_file)
         self.sdata = network.s
-        network.frequency.units = 'GHz'
+        network.frequency.units = 'Hz'
         self.fdata = network.f
 
     #TODO: you should be able to pass a string or a FitMethod object
@@ -43,14 +43,14 @@ class Resonator:
         """Set the fitting strategy with a FitMethod object."""
         self.fitter = Fitter(fit_method=strategy)
 
-    def fit(self, manual_init=None, verbose = False):
+    def fit(self, manual_init=None):
         """Perform fitting using the selected fitting strategy."""
         if not self.fitter:
             raise ValueError("Fitting strategy not set.")
         if type(self.fdata) == NoneType or type(self.sdata) == NoneType:
             raise ValueError("Data not loaded")
 
-        self.fit_result = self.fitter.fit(self.fdata, self.sdata, manual_init=manual_init, verbose = verbose)
+        self.fit_result = self.fitter.fit(self.fdata, self.sdata, manual_init=manual_init)
         return self.fit_result
 
     #Additional resonator functionalities can be added here
